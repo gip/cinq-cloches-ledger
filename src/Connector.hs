@@ -23,7 +23,7 @@ import qualified Data.ByteString.Lazy as BL
 import qualified Data.Vault.Lazy as V
 
 import Ledger as L
-import Models.Account as M
+import Model.Account as M
 import DB.Schema as S
 import Http
 

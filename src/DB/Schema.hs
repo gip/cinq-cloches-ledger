@@ -39,6 +39,9 @@ Transfer
   executionCondition Text Maybe
   cancellationCondition Text Maybe
   expiryDuration Int Maybe
+  credits Text
+  debits Text
+  fulfillment Text Maybe
   deriving Show
 
 Fund

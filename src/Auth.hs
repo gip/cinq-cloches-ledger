@@ -16,7 +16,7 @@ import Data.Text.Encoding
 import Data.Maybe
 
 import Ledger
-import Models.Account
+import Model.Account
 import DB.Schema as S
 
 basicAuth ledger app request respond = do

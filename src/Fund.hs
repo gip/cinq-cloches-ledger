@@ -27,8 +27,8 @@ import Data.Text as T
 import qualified Data.Vault.Lazy as V
 
 import Ledger
-import Models.Transfer as M
-import Models.Common as C
+import Model.Transfer as M
+import Model.Common as C
 import DB.Schema as S
 import Http
 import Arith
@@ -53,7 +53,6 @@ applyFund isDebit ledger debitV = do
     throw NoSufficientFunds
   update accountK [AccountBalance =. newBalance]
   update (holdAccountK ledger) [AccountBalance =. newHoldBalance]
-  -- TODO: send notification
   -- TODO: if not atomic we should advance to next step immeditely
   return ()
   where (opAccount, opHold) = if isDebit then (sub, add) else (add, sub)

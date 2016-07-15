@@ -6,16 +6,20 @@
 module Ledger where
 
 import System.Environment
+import Network.WebSockets (Connection)
 import Control.Monad
 import Control.Monad.IO.Class
 import Control.Monad.Trans.Control
 import Control.Exception
 import Control.Monad.Logger (runLoggingT, runStdoutLoggingT)
+import Control.Concurrent.STM
 import Data.Typeable
 import Data.Maybe
+import qualified Data.Map.Strict as M
 import Data.ByteString.Char8 as B8
 import Data.Text as T
 import qualified Data.Vault.Lazy as V
+import qualified Data.ByteString.Lazy as BL
 
 -- Postgres
 import qualified Database.Persist.Postgresql as PG
@@ -45,6 +49,7 @@ data Ledger = Ledger {
   baseUri :: !Text,
   holdAccountK :: S.Key S.Account,
   monitorInterval :: !Int,
+  listeners ::TVar (M.Map Text [(TChan BL.ByteString, Connection)]),
   runDB :: forall a m. (MonadBaseControl IO m, MonadIO m) => PG.SqlPersistT m a -> m a
 }
 
@@ -74,6 +79,7 @@ createLedger = do
   let mInterval = parse env "LEDGER_MONITOR_INTERVAL"
   pool <- runStdoutLoggingT $ PG.createPostgresqlPool conn 10
   keyAuth <- V.newKey
+  listeners <- newTVarIO M.empty
   return $ Ledger scale
                   port
                   keyAuth
@@ -82,4 +88,5 @@ createLedger = do
                   (T.pack baseUri)
                   undefined
                   mInterval
+                  listeners
                   (\action -> PG.runSqlPool action pool)

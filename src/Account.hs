@@ -2,7 +2,7 @@
 {-# LANGUAGE TypeFamilies #-}
 {-# LANGUAGE MultiWayIf #-}
 {-# LANGUAGE FlexibleContexts #-}
-module Account(http, ws, createAccount) where
+module Account(http, createAccount, extractAccountName) where
 
 import Network.Wai
 import Network.Wai.Handler.WebSockets
@@ -11,7 +11,7 @@ import Network.WebSockets
 
 import Database.Persist hiding (get)
 import Data.Aeson
-import Data.Text
+import Data.Text as T
 import Data.Either
 import Data.Typeable
 import Control.Monad
@@ -21,9 +21,15 @@ import qualified Data.ByteString.Lazy as BL
 import qualified Data.Vault.Lazy as V
 
 import Ledger as L
-import Models.Account as M
+import Model.Account as M
 import DB.Schema as S
 import Http
+
+-- Account name from accountURI or throw an error if not on this ledger
+extractAccountName ledger m =
+  case commonPrefixes (T.concat [baseUri ledger, "/accounts/"]) m of
+    Just (_, "", n) -> n
+    _ -> throw $ UnrecognizedAccount (BL.fromStrict . encodeUtf8 $ m)
 
 createAccount ledger user pass admin = do
   r <- runDB ledger $ insertBy $ toEntity (amountScale ledger) account
@@ -67,13 +73,3 @@ get ledger accountName req respond = do
               responseLBS status200 standardHeaders (encode . fromEntity scale $ entityVal entity)
             _ -> throw (NotFound "account")
   where scale = amountScale ledger
-
-ws ledger _ = websocketsOr defaultConnectionOptions wsApp backupApp
-  where
-    wsApp :: ServerApp
-    wsApp pending_conn = do
-        conn <- acceptRequest pending_conn
-        sendTextData conn ("Hello, client!" :: Text)
-    backupApp :: Application
-    backupApp _ respond =
-      respond $ responseLBS status400 [] "Not a WebSocket request"

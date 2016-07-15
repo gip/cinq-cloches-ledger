@@ -1,6 +1,6 @@
 {-# LANGUAGE DeriveGeneric #-}
 {-# LANGUAGE OverloadedStrings #-}
-module Models.Account(
+module Model.Account(
   Account(..),
   hashPassword,
   toEntity,
@@ -15,7 +15,7 @@ import Data.Text.Encoding
 import Control.Monad
 import Crypto.Hash
 
-import Models.Common
+import Model.Common
 import Arith
 import qualified DB.Schema as S
 
@@ -51,7 +51,7 @@ toEntity scale a =
             (connector a)
             (liftM hashPassword $ password a)
             (publicKey a)
-            (justOr False (Models.Account.isAdmin a))
+            (justOr False (Model.Account.isAdmin a))
             (justOr False (isDisabled a))
             (fingerprint a)
             (fromText scale $ justOr "0" (minimumAllowedBalance a))

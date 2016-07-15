@@ -21,20 +21,22 @@ import Database.Persist.Postgresql
 import Ledger
 import Transfer
 import Account
+import Notification
 import Health
 import Connector
 import Auth
 import Monitor
 import DB.Schema
+import Workaround
 
---app :: Application
+
+-- Default endpoint
 appSlash _ _ respond = do
     respond $ responseLBS
         status200
         []
-        "Cinq Cloches Legder (WIP)"
+        "Cinq Cloches Legder"
 
---topApp :: Application
 app ledger = route $
                  ("/", appSlash)
                : ("/health", Health.http ledger)
@@ -47,7 +49,7 @@ app ledger = route $
                -- accounts
                : ("/accounts/:id", Account.http ledger)
                -- notifications (websocket)
-               : ("/accounts/:id/transfers", Account.ws ledger)
+               : ("/accounts/:id/transfers", Notification.ws ledger)
                : []
 
 main :: IO ()

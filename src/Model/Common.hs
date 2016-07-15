@@ -1,7 +1,7 @@
 {-# LANGUAGE DeriveGeneric #-}
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE MultiWayIf #-}
-module Models.Common where
+module Model.Common where
 
 import GHC.Generics
 import Data.Aeson

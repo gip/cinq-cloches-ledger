@@ -1,29 +1,38 @@
 {-# LANGUAGE DeriveGeneric #-}
 {-# LANGUAGE OverloadedStrings #-}
-module Models.Transfer(
+module Model.Transfer(
   Transfer(..),
   TransferState(..),
   TranferRejectionReason(..),
   Fund(..),
   Timeline(..),
   toEntity,
+  fromEntity,
   toFundEntity,
   --fromFundEntity,
   FundType(..)
   ) where
 
 import GHC.Generics
-import Data.Aeson
+--import Data.Aeson
+import Data.Time.Clock (UTCTime)
+import Data.Aeson.Types
 import Data.Char
-import Data.Text (Text, unpack)
+import Data.Maybe
+import Data.Text (Text, unpack, pack)
 import Data.Text.Encoding
 import qualified Data.ByteString.Lazy as BL
 import Control.Monad
 
 import DB.Common as C
 import qualified DB.Schema as S
-import Models.Common
+import Model.Common
 import Arith
+
+import Data.Aeson hiding (encode) -- Workaround
+import Workaround (encodeWithWorkaround)
+encode :: ToJSON a => a -> BL.ByteString
+encode = encodeWithWorkaround
 
 instance FromJSON TransferState where
   parseJSON (String "proposed") = return Proposed
@@ -68,6 +77,9 @@ data Fund = Fund {
 } deriving (Show, Generic)
 instance FromJSON Fund
 instance ToJSON Fund
+-- Bug in Aeson 0.12.x, omitNothingFields doesn't work ;(
+--instance ToJSON Fund where
+--  toEncoding = genericToEncoding $ defaultOptions { omitNothingFields = True }
 
 toFundEntity :: Int -> S.Key S.Transfer -> Maybe (S.Key S.Account)
                     -> FundType -> Fund -> S.Fund
@@ -111,13 +123,16 @@ data Transfer = Transfer {
 } deriving (Show, Generic)
 instance FromJSON Transfer
 instance ToJSON Transfer
+-- Bug in Aeson 0.12.x, omitNothingFields doesn't work ;(
+--instance ToJSON Transfer where
+--  toEncoding = genericToEncoding $ defaultOptions { omitNothingFields = True }
 
 justOr def (Just v) = v
 justOr def _ = def
 
 toEntity :: Transfer -> S.Transfer
 toEntity t =
-  S.Transfer (uuidToText $ Models.Transfer.id t)
+  S.Transfer (uuidToText $ Model.Transfer.id t)
              (ledger t)
              (justOr Proposed $ state t)
              (rejection_reason t)
@@ -131,6 +146,9 @@ toEntity t =
             (execution_condition t)
             (cancellation_condition t)
             (liftM (read . unpack) $ expiry_duration t)
+            (decodeUtf8 . BL.toStrict . encode $ credits t)
+            (decodeUtf8 . BL.toStrict . encode $ debits t)
+            Nothing
 
 fromEntity :: S.Transfer -> Transfer
 fromEntity t =
@@ -140,8 +158,16 @@ fromEntity t =
            (S.transferRejectionReason t)
            (S.transferExecutionCondition t)
            (S.transferCancellationCondition t)
-           Nothing -- expiryDuration
-           [] -- credits are not included
-           [] -- debits are not included
+           (liftM (pack . show) $ S.transferExpiryDuration t)
+           (fromJust $ decode . BL.fromStrict . encodeUtf8 $ S.transferCredits t)
+           (fromJust $ decode . BL.fromStrict . encodeUtf8 $ S.transferDebits t)
            (S.transferAdditionalInfo t >>= decode . BL.fromStrict . encodeUtf8)
-           Nothing -- TODO
+           (Just timeline)
+  where
+    show' :: Maybe UTCTime -> Maybe Text
+    show' = liftM (pack . show)
+    timeline =
+      Timeline (show' $ S.transferProposedAt t)
+               (show' $ S.transferPreparedAt t)
+               (show' $ S.transferExecutedAt t)
+               (show' $ S.transferRejectedAt t)
