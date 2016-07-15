@@ -20,6 +20,7 @@ import qualified Data.Vault.Lazy as V
 -- Postgres
 import qualified Database.Persist.Postgresql as PG
 
+import DB.Schema as S
 
 data ConfigurationError =
     ConfigurationMissing String
@@ -39,8 +40,11 @@ data Ledger = Ledger {
   amountScale :: !Int,
   port :: !Int,
   keyAuth :: V.Key (Maybe Auth),
-  adminName :: Text,
-  adminPassword :: Text,
+  adminName :: !Text,
+  adminPassword :: !Text,
+  baseUri :: !Text,
+  holdAccountK :: S.Key S.Account,
+  monitorInterval :: !Int,
   runDB :: forall a m. (MonadBaseControl IO m, MonadIO m) => PG.SqlPersistT m a -> m a
 }
 
@@ -66,6 +70,8 @@ createLedger = do
   let conn = B8.pack $ parseString env "LEDGER_DB_CONNECTION_STRING"
   let aName = parseString env "LEDGER_ADMIN_USER"
   let aPass = parseString env "LEDGER_ADMIN_PASSWORD"
+  let baseUri = parseString env "LEDGER_BASE_URI"
+  let mInterval = parse env "LEDGER_MONITOR_INTERVAL"
   pool <- runStdoutLoggingT $ PG.createPostgresqlPool conn 10
   keyAuth <- V.newKey
   return $ Ledger scale
@@ -73,4 +79,7 @@ createLedger = do
                   keyAuth
                   (T.pack aName)
                   (T.pack aPass)
+                  (T.pack baseUri)
+                  undefined
+                  mInterval
                   (\action -> PG.runSqlPool action pool)

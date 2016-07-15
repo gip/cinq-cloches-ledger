@@ -4,12 +4,18 @@ module Models.Transfer(
   Transfer(..),
   TransferState(..),
   TranferRejectionReason(..),
-  toEntity
+  Fund(..),
+  Timeline(..),
+  toEntity,
+  toFundEntity,
+  --fromFundEntity,
+  FundType(..)
   ) where
 
 import GHC.Generics
 import Data.Aeson
-import Data.Text (Text)
+import Data.Char
+import Data.Text (Text, unpack)
 import Data.Text.Encoding
 import qualified Data.ByteString.Lazy as BL
 import Control.Monad
@@ -17,6 +23,7 @@ import Control.Monad
 import DB.Common as C
 import qualified DB.Schema as S
 import Models.Common
+import Arith
 
 instance FromJSON TransferState where
   parseJSON (String "proposed") = return Proposed
@@ -35,8 +42,16 @@ instance FromJSON TranferRejectionReason where
   parseJSON (String "cancelled") = return Cancelled
   parseJSON (String "expired") = return Expired
   parseJSON _ = fail "could not parse TranferRejectionReason"
+instance ToJSON TranferRejectionReason where
+  toJSON Cancelled = String "cancelled"
+  toJSON Expired = String "expired"
 
-type Condition = String
+instance FromJSON FundType where
+  parseJSON (String "credit") = return Credit
+  parseJSON (String "debit") = return Debit
+  parseJSON _ = fail "could not parse FundType"
+
+type Condition = Text
 
 data AdditionalInfo = AdditionalInfo {
   cases :: Maybe [Text]
@@ -44,28 +59,58 @@ data AdditionalInfo = AdditionalInfo {
 instance FromJSON AdditionalInfo
 instance ToJSON AdditionalInfo
 
-data Funds = Funds {
+data Fund = Fund {
   account :: Maybe Text,
   amount :: Text,
   memo :: Maybe Value,
   invoice :: Maybe Text,
   authorized :: Maybe Bool
 } deriving (Show, Generic)
-instance FromJSON Funds
+instance FromJSON Fund
+instance ToJSON Fund
+
+toFundEntity :: Int -> S.Key S.Transfer -> Maybe (S.Key S.Account)
+                    -> FundType -> Fund -> S.Fund
+toFundEntity scale transferId mAccountId type_ f =
+  S.Fund transferId
+         type_
+         mAccountId
+         (fromText scale $ amount f)
+         (authorized f)
+
+-- fromFundEntity :: Int -> S.Fund -> Fund
+-- fromFundEntity scale f =
+--   Fund (S.fundAccount f)
+--        (toText scale $ S.fundAmount f)
+--        Nothing
+--        Nothing
+--        (S.fundIsAuthorized f)
+
+data Timeline = Timeline {
+  proposed_at :: Maybe Text,
+  prepared_at :: Maybe Text,
+  executed_at :: Maybe Text,
+  rejected_at :: Maybe Text
+} deriving (Show, Generic)
+instance FromJSON Timeline
+instance ToJSON Timeline
+defaultTimeline = Timeline Nothing Nothing Nothing Nothing
 
 data Transfer = Transfer {
   id :: Uuid,
   ledger :: Text,
-  state :: TransferState,
+  state :: Maybe TransferState,
   rejection_reason :: Maybe TranferRejectionReason,
   execution_condition :: Maybe Condition,
   cancellation_condition :: Maybe Condition,
   expiry_duration :: Maybe Text,
-  credits :: [Funds],
-  debits :: [Funds],
-  additional_info :: Maybe AdditionalInfo
+  credits :: [Fund],
+  debits :: [Fund],
+  additional_info :: Maybe AdditionalInfo,
+  timeline :: Maybe Timeline
 } deriving (Show, Generic)
 instance FromJSON Transfer
+instance ToJSON Transfer
 
 justOr def (Just v) = v
 justOr def _ = def
@@ -74,7 +119,7 @@ toEntity :: Transfer -> S.Transfer
 toEntity t =
   S.Transfer (uuidToText $ Models.Transfer.id t)
              (ledger t)
-             (state t)
+             (justOr Proposed $ state t)
              (rejection_reason t)
              Nothing
              Nothing
@@ -83,3 +128,20 @@ toEntity t =
              Nothing
              (liftM (decodeUtf8 . BL.toStrict . encode) $
                additional_info t)
+            (execution_condition t)
+            (cancellation_condition t)
+            (liftM (read . unpack) $ expiry_duration t)
+
+fromEntity :: S.Transfer -> Transfer
+fromEntity t =
+  Transfer (Uuid $ S.transferUuid t)
+           (S.transferLedger t)
+           (Just $ S.transferState t)
+           (S.transferRejectionReason t)
+           (S.transferExecutionCondition t)
+           (S.transferCancellationCondition t)
+           Nothing -- expiryDuration
+           [] -- credits are not included
+           [] -- debits are not included
+           (S.transferAdditionalInfo t >>= decode . BL.fromStrict . encodeUtf8)
+           Nothing -- TODO

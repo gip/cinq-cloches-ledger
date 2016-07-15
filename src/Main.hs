@@ -3,6 +3,7 @@
 {-# LANGUAGE ScopedTypeVariables #-}
 {-# LANGUAGE FlexibleContexts #-}
 import Data.Text
+import Control.Concurrent
 import Control.Monad.IO.Class
 import Control.Monad.Trans.Control
 import Control.Monad.Logger (runLoggingT, runStdoutLoggingT)
@@ -21,7 +22,9 @@ import Ledger
 import Transfer
 import Account
 import Health
+import Connector
 import Auth
+import Monitor
 import DB.Schema
 
 --app :: Application
@@ -37,20 +40,22 @@ app ledger = route $
                : ("/health", Health.http ledger)
                -- transfer routes
                : ("/transfers/:id", Transfer.http ledger)
-               : ("/transfers/:id/fulfillment", appSlash)
+               : ("/transfers/:id/fulfillment", Transfer.httpFulfill ledger)
                : ("/transfers/:id/state", appSlash)
                -- connectors
-               : ("/connectors", appSlash)
+               : ("/connectors", Connector.http ledger)
                -- accounts
-               : ("/accounts/:name", Account.http ledger)
+               : ("/accounts/:id", Account.http ledger)
                -- notifications (websocket)
-               : ("/accounts/:name/transfers", Account.ws ledger)
+               : ("/accounts/:id/transfers", Account.ws ledger)
                : []
 
 main :: IO ()
 main = do
   ledger <- createLedger
   runDB ledger $ runMigration migrateAll
-  createAdminAccount ledger (adminName ledger) (Just $ adminPassword ledger)
-  --run (port ledger) $ logStdoutDev (app ledger)
-  run (port ledger) $ logStdoutDev $ basicAuth ledger $ (app ledger)
+  createAccount ledger (adminName ledger) (Just $ adminPassword ledger) True
+  holdK <- createAccount ledger "hold" Nothing False
+  let ledger' = ledger { holdAccountK = holdK }
+  forkIO $ expiryMonitorThread ledger'
+  run (port ledger') $ logStdoutDev $ basicAuth ledger' $ (app ledger')

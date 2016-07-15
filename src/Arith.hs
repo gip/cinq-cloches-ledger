@@ -24,6 +24,8 @@ add x y =
         p x = x > 0
         n x = x < 0
 
+sub x y = add x (neg y)
+
 fromText :: Int -> Text -> T
 fromText scale txt =
   case splitOn "." txt of
@@ -42,7 +44,7 @@ toText 0 x = pack $ show x
 toText scale x =
   if | x == 0 -> "0"
      | x > 0 -> toTextPos x
-     | otherwise -> T.concat ["-", toTextPos (-x)]
+     | otherwise -> T.concat ["-", toTextPos $ neg x]
   where
     toTextPos x =
       case T.splitAt (T.length textPadded - scale) textPadded of

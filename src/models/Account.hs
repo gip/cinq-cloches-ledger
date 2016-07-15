@@ -31,10 +31,10 @@ data Account = Account {
   minimumAllowedBalance :: Maybe Text
 } deriving (Show, Generic)
 instance FromJSON Account
+instance ToJSON Account
 
 defaultAccount = Account undefined n n n n n n n n
   where n = Nothing
-
 
 justOr def maybev = case maybev of Just v -> v
                                    _ -> def
@@ -61,7 +61,7 @@ fromEntity scale a =
   Account (S.accountName a)
           (Just . toText scale $ S.accountBalance a)
           (S.accountConnector a)
-          (S.accountPasswordHash a)
+          Nothing -- never show password or hash
           (S.accountPublicKey a)
           (Just . S.accountIsAdmin $ a)
           (Just . S.accountIsDisabled $ a)

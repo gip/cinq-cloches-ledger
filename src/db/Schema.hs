@@ -20,6 +20,9 @@ import Data.Text (Text)
 
 import DB.Common
 
+-- export Key
+type Key = Database.Persist.Sql.Key
+
 share [mkPersist sqlSettings, mkMigrate "migrateAll"] [persistLowerCase|
 Transfer
   uuid Text
@@ -27,12 +30,23 @@ Transfer
   ledger Text
   state TransferState
   rejectionReason TranferRejectionReason Maybe
-  expires_at UTCTime Maybe
-  proposed_at UTCTime Maybe
-  prepared_at UTCTime Maybe
-  executed_at UTCTime Maybe
-  rejected_at UTCTime Maybe
+  expiresAt UTCTime Maybe
+  proposedAt UTCTime Maybe
+  preparedAt UTCTime Maybe
+  executedAt UTCTime Maybe
+  rejectedAt UTCTime Maybe
   additionalInfo Text Maybe
+  executionCondition Text Maybe
+  cancellationCondition Text Maybe
+  expiryDuration Int Maybe
+  deriving Show
+
+Fund
+  transferId TransferId
+  type FundType
+  account AccountId Maybe
+  amount Int64
+  isAuthorized Bool Maybe
   deriving Show
 
 Fulfillment
