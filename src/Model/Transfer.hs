@@ -6,10 +6,10 @@ module Model.Transfer(
   TranferRejectionReason(..),
   Fund(..),
   Timeline(..),
+  TransferResponse(..),
   toEntity,
   fromEntity,
   toFundEntity,
-  --fromFundEntity,
   FundType(..)
   ) where
 
@@ -126,6 +126,12 @@ instance ToJSON Transfer
 -- Bug in Aeson 0.12.x, omitNothingFields doesn't work ;(
 --instance ToJSON Transfer where
 --  toEncoding = genericToEncoding $ defaultOptions { omitNothingFields = True }
+
+data TransferResponse = TransferResponse {
+  transfer :: Transfer,
+  existed :: Bool
+} deriving (Show, Generic)
+instance ToJSON TransferResponse
 
 justOr def (Just v) = v
 justOr def _ = def

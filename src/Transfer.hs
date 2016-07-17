@@ -5,6 +5,7 @@
 module Transfer(
   http,
   httpFulfill,
+  httpCondition,
   rejectTransfer,
   notifyTransfer
   ) where
@@ -30,6 +31,7 @@ import qualified Data.Vault.Lazy as V
 import Ledger
 import Model.Transfer as M
 import Model.Notification
+import Model.Fulfillment
 import Model.Common as C
 import DB.Schema as S
 import Fund
@@ -50,7 +52,8 @@ http ledger uriParams req respond = doit `catch` (respond . caught)
       print $ join $ V.lookup (keyAuth ledger) (vault req)
       let Just transferId = lookup "id" uriParams
       let method = requestMethod req
-      if | method == methodPut -> put ledger transferId req respond
+      if | method == methodPut -> putRoute ledger transferId req respond
+         | method == methodGet -> getRoute ledger transferId req respond
          | otherwise -> throw UnknownMethod
 
 httpFulfill ledger uriParams req respond = doit `catch` (respond . caught)
@@ -59,10 +62,27 @@ httpFulfill ledger uriParams req respond = doit `catch` (respond . caught)
       print $ join $ V.lookup (keyAuth ledger) (vault req)
       let Just transferId = lookup "id" uriParams
       let method = requestMethod req
-      if | method == methodPut -> putFulfill ledger transferId req respond
+      if | method == methodPut -> putFulfillRoute ledger transferId req respond
          | otherwise -> throw UnknownMethod
 
-put ledger transferId req respond = do
+httpCondition ledger uriParams req respond = doit `catch` (respond . caught)
+ where
+   doit = do
+     print $ join $ V.lookup (keyAuth ledger) (vault req)
+     let Just condition = lookup "id" uriParams
+     let method = requestMethod req
+     if | method == methodGet -> getConditionRoute ledger condition req respond
+        | otherwise -> throw UnknownMethod
+
+getRoute ledger transferId req respond = do
+  mTransferE <- runDB ledger $ selectFirst [TransferUuid ==. decodeUtf8 transferId] []
+  case mTransferE of
+    Nothing -> throw $ NotFound "transfer"
+    Just transferE ->
+      let body = encode (fromEntity $ entityVal transferE) in
+      respond $ responseLBS status200 standardHeaders body
+
+putRoute ledger transferId req respond = do
   rawBody <- strictRequestBody req
   let maybeTransfer = decode rawBody :: Maybe M.Transfer
   case maybeTransfer of
@@ -98,12 +118,19 @@ put ledger transferId req respond = do
       insert fundV
       return fundV
 
-putFulfill ledger transferId req respond = do
+putFulfillRoute ledger transferId req respond = do
   fulfillment <- strictRequestBody req
   processFromPrepared ledger (decodeUtf8 transferId) (toStrict fulfillment) respond
 
+getConditionRoute ledger condition req respond = do
+  transferEL <- runDB ledger $
+    selectList [TransferExecutionCondition ==. Just (decodeUtf8 condition)] []
+  respond $ responseLBS status200
+                        standardHeaders
+                        (encode $ L.map (fromEntity . entityVal) transferEL)
+
 processFromPrepared ledger transferId fulfillment respond = do
-  (body, mNotifyTransferV) <- runDB ledger $ do
+  (fulfillment', existed, mNotifyTransferV) <- runDB ledger $ do
     rawExecute "SET TRANSACTION ISOLATION LEVEL SERIALIZABLE" [] -- TODO: check this
     mTransferE <- selectFirst [TransferUuid ==. transferId] []
     case mTransferE of
@@ -117,11 +144,14 @@ processFromPrepared ledger transferId fulfillment respond = do
                        | transferCancellationCondition transferV == Just cURI -> Rejected
                        | otherwise -> throw UnmetCondition
         if | cType == Executed && currentState == Executed -> do
-                        -- transfer already executed
-                        return ("", Nothing) -- TODO: return transfer
+                        -- TODO: check this is what should be returned
+                        case transferFulfillment transferV of
+                          Nothing -> throw $ InternalAssertion "no fulfillment found"
+                          Just f -> return (f, True, Nothing)
            | cType == Rejected && currentState == Rejected -> do
-                        -- transfer already rejected
-                        return ("", Nothing) -- TODO: return transfer
+                        case transferFulfillment transferV of
+                          Nothing -> return ("", False, Nothing) -- If transfer expired
+                          Just f -> return (f, True, Nothing)
            | cType == Executed && currentState == Prepared -> do
                         creditEL <- selectList [FundTransferId ==. transferK,
                                                 FundType ==. Credit] []
@@ -131,17 +161,19 @@ processFromPrepared ledger transferId fulfillment respond = do
                                           TransferExecutedAt =. Just t,
                                           TransferFulfillment =. Just fulfillmentText]
                         transferV' <- getJust transferK
-                        return ("", Just transferV')
+                        return (fulfillmentText, False, Just transferV')
            | cType == Rejected && (currentState == Proposed ||
                                    currentState == Prepared) -> do
                         rejectTransfer ledger Cancelled transferK (Just fulfillmentText)
                         transferV' <- getJust transferK
-                        return ("", Just transferV')
+                        return (fulfillmentText, False, Just transferV')
            | otherwise -> throw InvalidFulfillment
   case mNotifyTransferV of
     Just transferV -> notifyTransfer ledger transferV
     Nothing -> return ()
-  respond $ responseLBS status200 [] body -- TODO: change this
+  respond $ responseLBS status200
+                        standardHeaders
+                        (encode $ FulfillmentResponse fulfillment' existed)
   where
     fulfillmentText = decodeUtf8 fulfillment
 
@@ -163,7 +195,9 @@ processFromProposed ledger transfer (transferK, creditVL, debitVL) respond = do
     update transferK [TransferState =. Prepared, TransferPreparedAt =. Just t]
     getJust transferK
   notifyTransfer ledger transferV
-  respond $ responseLBS status200 [] "" -- TODO: change this
+  respond $ responseLBS status200
+                        standardHeaders
+                        (encode $ TransferResponse (fromEntity transferV) False)
 
 notifyTransfer ledger transferV = do
   let notification = Notification (fromEntity transferV) rResource

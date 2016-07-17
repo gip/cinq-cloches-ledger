@@ -44,6 +44,7 @@ app ledger = route $
                : ("/transfers/:id", Transfer.http ledger)
                : ("/transfers/:id/fulfillment", Transfer.httpFulfill ledger)
                : ("/transfers/:id/state", appSlash)
+               : ("/transfers/byExecutionCondition/:id", Transfer.httpCondition ledger)
                -- connectors
                : ("/connectors", Connector.http ledger)
                -- accounts

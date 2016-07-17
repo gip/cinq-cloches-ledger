@@ -27,6 +27,7 @@ data ProcessingException =
   | UnmetCondition
   | InvalidFulfillment
   | NoSufficientFundsOnHoldAccount -- should really never happen!
+  | InternalAssertion BL.ByteString -- error in the ledger logic
   deriving (Show, Typeable)
 instance Exception ProcessingException
 
@@ -53,3 +54,5 @@ caught (UnmetCondition) =
   responseLBS status404 [] "unmet condition"
 caught (InvalidFulfillment) =
   responseLBS status404 [] "invalid fulfillment"
+caught (InternalAssertion w) =
+  responseLBS status500 [] (BL.concat ["internal assertion: ", w])
