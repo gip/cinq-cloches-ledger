@@ -23,27 +23,20 @@ import Transfer
 import Account
 import Notification
 import Health
+import Metadata
 import Connector
 import Auth
 import Monitor
 import DB.Schema
 import Workaround
 
-
--- Default endpoint
-appSlash _ _ respond = do
-    respond $ responseLBS
-        status200
-        []
-        "Cinq Cloches Legder"
-
 app ledger = route $
-                 ("/", appSlash)
+                 ("/", Metadata.http ledger)
                : ("/health", Health.http ledger)
                -- transfer routes
                : ("/transfers/:id", Transfer.http ledger)
                : ("/transfers/:id/fulfillment", Transfer.httpFulfill ledger)
-               : ("/transfers/:id/state", appSlash)
+               -- : ("/transfers/:id/state", appSlash)
                : ("/transfers/byExecutionCondition/:id", Transfer.httpCondition ledger)
                -- connectors
                : ("/connectors", Connector.http ledger)

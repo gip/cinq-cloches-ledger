@@ -40,7 +40,7 @@ caught (WrongFormat w) =
 caught (WrongValue w) =
   responseLBS status404 [] (BL.concat ["wrong value: ", w])
 caught (UnknownMethod) = responseLBS status404 [] "unknown method"
-caught (NotAutorized) = responseLBS status401 [] "not authorized"
+caught (NotAutorized) = responseLBS status403 [] "not authorized"
 caught (UnrecognizedAccount w) =
   responseLBS status401 [] (BL.concat ["unrecognized uri: ", w])
 caught (DBLogicError w) = responseLBS status500 [] (BL.concat ["db logic: ", w])

@@ -10,7 +10,7 @@ module Model.Account(
 
 import GHC.Generics
 import Data.Aeson
-import Data.Text (Text, pack)
+import Data.Text as T (Text, pack, concat)
 import Data.Text.Encoding
 import Control.Monad
 import Crypto.Hash
@@ -28,12 +28,14 @@ data Account = Account {
   isAdmin :: Maybe Bool,
   isDisabled :: Maybe Bool,
   fingerprint :: Maybe Text,
-  minimumAllowedBalance :: Maybe Text
+  minimumAllowedBalance :: Maybe Text,
+  ledger :: Maybe Text,
+  id :: Maybe Text
 } deriving (Show, Generic)
 instance FromJSON Account
 instance ToJSON Account
 
-defaultAccount = Account undefined n n n n n n n n
+defaultAccount = Account undefined n n n n n n n n n n
   where n = Nothing
 
 justOr def maybev = case maybev of Just v -> v
@@ -56,8 +58,8 @@ toEntity scale a =
             (fingerprint a)
             (fromText scale $ justOr "0" (minimumAllowedBalance a))
 
-fromEntity :: Int -> S.Account -> Account
-fromEntity scale a =
+fromEntity :: Int -> Text -> S.Account -> Account
+fromEntity scale ledgerUri a =
   Account (S.accountName a)
           (Just . toText scale $ S.accountBalance a)
           (S.accountConnector a)
@@ -67,3 +69,5 @@ fromEntity scale a =
           (Just . S.accountIsDisabled $ a)
           (S.accountFingerprint a)
           (Just . toText scale $ S.accountMinAllowedBalance a)
+          (Just ledgerUri)
+          (Just $ T.concat [ledgerUri, "/accounts/", S.accountName a])

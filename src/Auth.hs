@@ -4,7 +4,7 @@
 module Auth where
 
 import Network.Wai
-import Network.HTTP.Types (status401, hContentType, hAuthorization)
+import Network.HTTP.Types
 import Database.Persist
 
 import Control.Monad
@@ -14,15 +14,18 @@ import Data.ByteString.Base64 (decodeLenient)
 import Data.Word8 (isSpace, _colon, toLower)
 import Data.Text.Encoding
 import Data.Maybe
+import Http
 
 import Ledger
 import Model.Account
 import DB.Schema as S
 
 basicAuth ledger app request respond = do
-  checkedAuth <- case rawAuth of Just auth -> checkAuth auth
-                                 Nothing -> return Nothing
-  app (request' checkedAuth) respond
+  mCheckedAuth <- case rawAuth of Just auth -> checkAuth auth
+                                  Nothing -> return $ Just Nothing
+  case mCheckedAuth of
+    Just checkedAuth -> app (request' checkedAuth) respond
+    Nothing -> respond $ responseLBS status403 [] "not authorized"
   where
     rawAuth = (lookup hAuthorization $ requestHeaders request)
               >>= extractBasicAuth >>= decode >>= buildAuth
@@ -32,7 +35,7 @@ basicAuth ledger app request respond = do
         Just entity ->
           let val = entityVal entity in
           if accountPasswordHash val == Just hPass
-            then Just $ Auth user (accountIsAdmin val)
+            then Just $ Just $ Auth user (accountIsAdmin val)
             else Nothing
         Nothing -> Nothing
     checkAuth _ = return Nothing
