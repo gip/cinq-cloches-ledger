@@ -111,6 +111,12 @@ putRoute ledger transferId req respond = do
       mAccountK <- case liftM (extractAccountName ledger) $ account fund of
         Nothing -> return Nothing -- not on this ledger, skip it
         Just n -> do
+          when (typ == Debit) $ do -- check if authorized (debits only)
+            case join $ V.lookup (keyAuth ledger) (vault req) of
+              Nothing -> throw $ UnauthorizedDebit
+              Just auth ->  if n == user auth
+                               then return ()
+                               else throw $ UnauthorizedDebit
           r <- selectFirst [AccountName ==. n] []
           case r of Just e -> return $ Just (entityKey e)
                     _ -> throw $ UnrecognizedAccount (fromStrict . encodeUtf8 $ n)
@@ -153,9 +159,10 @@ processFromPrepared ledger transferId fulfillment respond = do
                           Nothing -> return ("", False, Nothing) -- If transfer expired
                           Just f -> return (f, True, Nothing)
            | cType == Executed && currentState == Prepared -> do
-                        creditEL <- selectList [FundTransferId ==. transferK,
-                                                FundType ==. Credit] []
-                        mapM (applyCredit ledger . entityVal) creditEL
+                        fundEL <- selectList [FundTransferId ==. transferK] []
+                        let (creditL, debitL) = L.partition (\fund -> fundType fund == Credit) $ L.map entityVal fundEL
+                        mapM_ (applyCredit ledger) creditL
+                        mapM_ (commitDebit ledger) debitL
                         t <- liftIO getCurrentTime
                         update transferK [TransferState =. Executed,
                                           TransferExecutedAt =. Just t,

@@ -7,7 +7,7 @@ module Fund(
   applyDebit,
   unapplyDebit,
   applyCredit,
-  unapplyCredit
+  commitDebit
 ) where
 
 import Network.Wai
@@ -36,26 +36,49 @@ import Arith
 unwrap e Nothing = throw e
 unwrap e (Just v) = v
 
-applyFund isDebit ledger debitV = do
-  let accountK = unwrap DebitWithoutAccount (fundAccount debitV)
+applyFund isDebit ledger fundV = do
+  let accountK = unwrap DebitWithoutAccount (fundAccount fundV)
   mAccountV <- get (accountK :: S.Key S.Account)
   let accountV = unwrap (DBLogicError "referenced account not found") mAccountV
-  liftIO $ print (holdAccountK ledger)
-  mHoldV <- get (holdAccountK ledger)
-  let holdV = unwrap (DBLogicError "hold account not found") mHoldV
-  -- Now let's apply the debit...
-  let amount = fundAmount debitV
+  let amount = fundAmount fundV
   let originalBalance = accountBalance accountV
-  let originalHoldBalance = accountBalance holdV
   let newBalance = opAccount originalBalance amount
-  let newHoldBalance = opHold originalHoldBalance amount
-  when (newBalance < accountMinAllowedBalance accountV) $
-    throw NoSufficientFunds
-  update accountK [AccountBalance =. newBalance]
-  update (holdAccountK ledger) [AccountBalance =. newHoldBalance]
+  when (newBalance < accountMinAllowedBalance accountV) $ throw NoSufficientFunds
+  if isDebit
+    then do
+      let originalLocalHoldBalance = accountHold accountV
+      let newLocalHoldBalance = opHold originalLocalHoldBalance amount
+      update accountK [AccountBalance =. newBalance,
+                       AccountHold =. newLocalHoldBalance]
+    else update accountK [AccountBalance =. newBalance]
+  -- Hold account (if used)
+  when (useHoldAccount ledger) $ do
+    mHoldV <- get (holdAccountK ledger)
+    let holdV = unwrap (DBLogicError "hold account not found") mHoldV
+    let originalHoldBalance = accountBalance holdV
+    let newHoldBalance = opHold originalHoldBalance amount
+    update (holdAccountK ledger) [AccountBalance =. newHoldBalance]
   -- TODO: if not atomic we should advance to next step immeditely
   return ()
   where (opAccount, opHold) = if isDebit then (sub, add) else (add, sub)
+
+-- | commitDebit
+-- Free the funds in escrow (hold)
+--
+commitDebit ledger fundV = do
+  let accountK = unwrap DebitWithoutAccount (fundAccount fundV)
+  mAccountV <- get (accountK :: S.Key S.Account)
+  let accountV = unwrap (DBLogicError "referenced account not found") mAccountV
+  let amount = fundAmount fundV
+  let originalLocalHoldBalance = accountHold accountV
+  let newLocalHoldBalance = sub originalLocalHoldBalance amount
+  update accountK [AccountHold =. newLocalHoldBalance]
+  when (useHoldAccount ledger) $ do
+    mHoldV <- get (holdAccountK ledger)
+    let holdV = unwrap (DBLogicError "hold account not found") mHoldV
+    let originalHoldBalance = accountBalance holdV
+    let newHoldBalance = sub originalHoldBalance amount
+    update (holdAccountK ledger) [AccountBalance =. newHoldBalance]
 
 type ApplyFund =
   forall m. (MonadIO m) => Ledger -> S.Fund -> ReaderT SqlBackend m ()
@@ -63,11 +86,8 @@ type ApplyFund =
 applyDebit :: ApplyFund
 applyDebit = applyFund True
 
-unapplyDebit ::ApplyFund
+unapplyDebit :: ApplyFund
 unapplyDebit = applyFund False
 
 applyCredit :: ApplyFund
 applyCredit = applyFund False
-
-unapplyCredit :: ApplyFund
-unapplyCredit = applyFund True

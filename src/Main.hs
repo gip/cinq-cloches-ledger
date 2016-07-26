@@ -51,7 +51,8 @@ main = do
   ledger <- createLedger
   runDB ledger $ runMigration migrateAll
   createAccount ledger (adminName ledger) (Just $ adminPassword ledger) True
-  holdK <- createAccount ledger "hold" Nothing False
-  let ledger' = ledger { holdAccountK = holdK }
+  ledger' <- if useHoldAccount ledger
+                then createAccount ledger "hold" Nothing False >>= (\k -> return $ ledger { holdAccountK = k })
+                else return ledger
   forkIO $ expiryMonitorThread ledger'
   run (port ledger') $ logStdoutDev $ basicAuth ledger' $ (app ledger')

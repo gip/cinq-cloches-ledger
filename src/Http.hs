@@ -4,6 +4,7 @@ module Http where
 import Data.Typeable
 import qualified Data.ByteString as B
 import qualified Data.ByteString.Lazy as BL
+import qualified Data.ByteString.Lazy.Char8 as CL
 import Control.Exception
 import Network.Wai
 import Network.HTTP.Types
@@ -23,6 +24,7 @@ data ProcessingException =
   | DBLogicError BL.ByteString
   | DebitWithoutAccount
   | CreditWithoutAccount
+  | UnauthorizedDebit
   | NoSufficientFunds
   | UnmetCondition
   | InvalidFulfillment
@@ -56,3 +58,7 @@ caught (InvalidFulfillment) =
   responseLBS status404 [] "invalid fulfillment"
 caught (InternalAssertion w) =
   responseLBS status500 [] (BL.concat ["internal assertion: ", w])
+caught (UnauthorizedDebit) =
+  responseLBS status500 [] "unauthorized debit"
+caught e =
+  responseLBS status500 [] (BL.concat ["internal error: ", CL.pack $ show e])

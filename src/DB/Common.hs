@@ -14,5 +14,5 @@ data TranferRejectionReason = Cancelled | Expired
 derivePersistField "TranferRejectionReason"
 
 data FundType = Credit | Debit
-  deriving (Show, Read, Generic)
+  deriving (Show, Read, Eq, Generic)
 derivePersistField "FundType"

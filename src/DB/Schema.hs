@@ -68,4 +68,5 @@ Account
   isDisabled Bool
   fingerprint Text Maybe
   minAllowedBalance Int64 default=0
+  hold Int64
 |]

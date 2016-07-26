@@ -57,6 +57,7 @@ toEntity scale a =
             (justOr False (isDisabled a))
             (fingerprint a)
             (fromText scale $ justOr "0" (minimumAllowedBalance a))
+            0
 
 fromEntity :: Int -> Text -> S.Account -> Account
 fromEntity scale ledgerUri a =

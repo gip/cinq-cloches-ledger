@@ -47,6 +47,7 @@ data Ledger = Ledger {
   adminName :: !Text,
   adminPassword :: !Text,
   baseUri :: !Text,
+  useHoldAccount :: !Bool,
   holdAccountK :: S.Key S.Account,
   monitorInterval :: !Int,
   listeners ::TVar (M.Map Text [(TChan BL.ByteString, Connection)]),
@@ -77,6 +78,7 @@ createLedger = do
   let aPass = parseString env "LEDGER_ADMIN_PASSWORD"
   let baseUri = parseString env "LEDGER_BASE_URI"
   let mInterval = parse env "LEDGER_MONITOR_INTERVAL"
+  let useHold = parse env "LEDGER_USE_HOLD"
   pool <- runStdoutLoggingT $ PG.createPostgresqlPool conn 10
   keyAuth <- V.newKey
   listeners <- newTVarIO M.empty
@@ -86,6 +88,7 @@ createLedger = do
                   (T.pack aName)
                   (T.pack aPass)
                   (T.pack baseUri)
+                  useHold
                   undefined
                   mInterval
                   listeners
